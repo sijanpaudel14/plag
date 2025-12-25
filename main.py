@@ -34,18 +34,33 @@ def process_copychecker_network(text: str):
     
     # --- STEALTH / BYPASS FLAGS ---
     # "headless=new" is the modern way to run headless that looks like a real head
+    # ... existing flags ...
     options.add_argument("--headless=new")
     
-    # Fake the User-Agent (crucial!)
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    # MEMORY SAVING FLAGS
+    options.add_argument("--disable-dev-shm-usage") # Essential
+    options.add_argument("--no-zygote")             # Disables the use of the zygote process
+    options.add_argument("--single-process")        # Runs Chrome in a single process (Less reliable but saves RAM)
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-popup-blocking")
     
-    # Remove automation flags
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-
-    # Enable logging
-    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    # Block heavy content
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,  # Block images
+        "profile.default_content_setting_values.notifications": 2, 
+        "profile.managed_default_content_settings.stylesheets": 2, # Block CSS (Might break detection)
+        "profile.managed_default_content_settings.cookies": 2,
+        "profile.managed_default_content_settings.javascript": 1, 
+        "profile.managed_default_content_settings.plugins": 2, 
+        "profile.managed_default_content_settings.popups": 2, 
+        "profile.managed_default_content_settings.geolocation": 2, 
+        "profile.managed_default_content_settings.media_stream": 2, 
+    }
+    options.add_experimental_option("prefs", prefs)
 
     driver = None
     try:
