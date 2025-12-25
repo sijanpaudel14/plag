@@ -60,9 +60,14 @@ def process_copychecker_network(text: str):
         "profile.managed_default_content_settings.geolocation": 2, 
         "profile.managed_default_content_settings.media_stream": 2, 
     }
-    options.add_experimental_option("prefs", prefs)
-
-    driver = None
+    # CORRECT WAY TO ENABLE PERFORMANCE LOGGING IN SELENIUM
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    
+    # Sometimes 'perfLoggingPrefs' is needed to actually capture network events
+    options.add_experimental_option("perfLoggingPrefs", {
+        "enableNetwork": True,
+        "enablePage": False,
+    })
     try:
         print("🚀 Starting Selenium (Headless=New)...")
         
