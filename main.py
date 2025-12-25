@@ -31,17 +31,22 @@ def process_copychecker_network(text: str):
     options = uc.ChromeOptions()
     options.binary_location = "/usr/bin/google-chrome"
     
-    # Docker/Linux specific arguments
+    options = uc.ChromeOptions()
+    options.binary_location = "/usr/bin/google-chrome"
+    
+    # --- STABILITY FLAGS ---
     options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-dev-shm-usage') # Force use of /tmp instead of /dev/shm
     options.add_argument('--disable-gpu')
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--start-maximized")
     options.add_argument("--disable-setuid-sandbox")
+    options.add_argument("--remote-debugging-port=9222")
     
-    # Critical for avoiding "session not created" in some environments
-    options.add_argument("--remote-debugging-port=9222") 
-
+    # FIX: Use a custom user data dir to prevent permission/lock issues
+    # This prevents "Session not created" due to profile corruption
+    options.add_argument(f"--user-data-dir={os.getcwd()}/chrome-profile")
+    
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
     
     chrome_ver = get_chrome_version()

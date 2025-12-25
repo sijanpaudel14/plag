@@ -14,7 +14,10 @@ RUN apt-get update && apt-get install -y \
     libu2f-udev \
     libvulkan1 \
     xdg-utils \
+    dbus \
+    x11-utils \
     && rm -rf /var/lib/apt/lists/*
+
 
 # 2. Install Google Chrome Stable (Modern Method)
 # We manually download the key, dearmor it, and place it in the trusted keyrings folder
