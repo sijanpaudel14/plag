@@ -1,26 +1,18 @@
 FROM python:3.9
 
-# 1. Install dependencies for Chrome, Xvfb, and Key management
+# 1. Install Chrome dependencies (Standard List)
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
-    xvfb \
-    libxi6 \
     libnss3 \
     libgbm1 \
     libasound2 \
     fonts-liberation \
-    libu2f-udev \
-    libvulkan1 \
     xdg-utils \
-    dbus \
-    x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
-
-# 2. Install Google Chrome Stable (Modern Method)
-# We manually download the key, dearmor it, and place it in the trusted keyrings folder
+# 2. Install Google Chrome
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
@@ -31,11 +23,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. Copy application code
+# 4. Copy Code
 COPY . .
 
-# Grant execution permission to the start script
-RUN chmod +x start.sh
-
-# 5. Run command: Use the start script
-CMD ["./start.sh"]
+# 5. Start Command (Direct Uvicorn, no Xvfb needed!)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,14 +1,16 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
+from webdriver_manager.chrome import ChromeDriverManager
 import time
-import os
 import json
+import os
 import base64
 
 app = FastAPI()
@@ -16,66 +18,71 @@ app = FastAPI()
 class PlagiarismRequest(BaseModel):
     text: str
 
-
-def get_chrome_version():
-    """Detects the installed Google Chrome version."""
-    try:
-        cmd = os.popen("google-chrome --version").read().strip()
-        # Output is like: "Google Chrome 131.0.6778.204"
-        version = cmd.split()[-1].split('.')[0]
-        return int(version)
-    except:
-        return 131  # Default fallback
+@app.get("/")
+def root():
+    return {"status": "Selenium API is running"}
 
 def process_copychecker_network(text: str):
-    options = uc.ChromeOptions()
+    options = webdriver.ChromeOptions()
     options.binary_location = "/usr/bin/google-chrome"
     
-    options = uc.ChromeOptions()
-    options.binary_location = "/usr/bin/google-chrome"
-    
-    # --- STABILITY FLAGS ---
+    # --- DOCKER STABILITY FLAGS ---
     options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage') # Force use of /tmp instead of /dev/shm
+    options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--remote-debugging-port=9222")
     
-    # FIX: Use a custom user data dir to prevent permission/lock issues
-    # This prevents "Session not created" due to profile corruption
-    options.add_argument(f"--user-data-dir={os.getcwd()}/chrome-profile")
+    # --- STEALTH / BYPASS FLAGS ---
+    # "headless=new" is the modern way to run headless that looks like a real head
+    options.add_argument("--headless=new")
     
+    # Fake the User-Agent (crucial!)
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Remove automation flags
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+
+    # Enable logging
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
-    
-    chrome_ver = get_chrome_version()
-    print(f"ℹ️ Detected Chrome Version: {chrome_ver}")
 
     driver = None
     try:
-        driver = uc.Chrome(
-            options=options, 
-            headless=False, 
-            use_subprocess=True,
-            version_main=chrome_ver 
-        )
+        print("🚀 Starting Selenium (Headless=New)...")
         
+        # Use webdriver_manager to get the correct driver automatically
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        
+        # Execute CDP command to remove the 'navigator.webdriver' property
+        # This is the #1 way Cloudflare detects bots
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                })
+            """
+        })
+
         print("🚀 Loading CopyChecker...")
         driver.get("https://copychecker.com/")
-
-        # ... (Rest of your interaction logic remains the same) ...
-        # (Be sure to keep the indentation correct!)
         
-        # --- Interaction Logic ---
+        # ... (Rest of logic is the same) ...
+        # NOTE: Since we are headless, we don't need to physically see the browser
+        # But we do need to wait for elements.
+
         textarea = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.ID, "message")))
-
-        ActionChains(driver).move_to_element(textarea).click().perform()
-        time.sleep(2)
-
+            
+        # We might not need ActionChains click in headless, but let's keep it safe
+        # Sometimes headless elements need to be scrolled into view to be interactable
+        driver.execute_script("arguments[0].scrollIntoView(true);", textarea)
+        time.sleep(1)
+        
         driver.execute_script("arguments[0].value = arguments[1];", textarea, text)
-        textarea.click()
+        
+        # Simulate typing just in case they check for key events
         textarea.send_keys(" ")
         textarea.send_keys(Keys.BACKSPACE)
         time.sleep(1)
@@ -84,9 +91,8 @@ def process_copychecker_network(text: str):
             EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Check Plagiarism')]"))
         )
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
-        time.sleep(0.5)
-        submit_btn.click()
-        # -------------------------
+        time.sleep(1) # Give it a moment
+        driver.execute_script("arguments[0].click();", submit_btn)
 
         # 2. MONITOR NETWORK
         print("⏳ Waiting for API response...")
@@ -116,10 +122,10 @@ def process_copychecker_network(text: str):
                     continue
             time.sleep(0.5)
 
-        return {"error": "Timeout - API call not found"}
+        return {"error": "Timeout - API call not found (Likely blocked or slow)"}
 
     except Exception as e:
-        return {"error": f"Chrome Crash: {str(e)}"}
+        return {"error": f"Selenium Error: {str(e)}"}
     finally:
         if driver:
             try:
@@ -130,3 +136,7 @@ def process_copychecker_network(text: str):
 @app.post("/check-plagiarism-network")
 def check_plagiarism_net(request: PlagiarismRequest):
     return process_copychecker_network(request.text)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -3,3 +3,5 @@ uvicorn
 pydantic
 undetected-chromedriver
 selenium
+webdriver-manager
+
