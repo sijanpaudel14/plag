@@ -7,6 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 import time
+import os
 import json
 import base64
 
@@ -15,32 +16,44 @@ app = FastAPI()
 class PlagiarismRequest(BaseModel):
     text: str
 
+
+def get_chrome_version():
+    """Detects the installed Google Chrome version."""
+    try:
+        cmd = os.popen("google-chrome --version").read().strip()
+        # Output is like: "Google Chrome 131.0.6778.204"
+        version = cmd.split()[-1].split('.')[0]
+        return int(version)
+    except:
+        return 131  # Default fallback
+
 def process_copychecker_network(text: str):
     options = uc.ChromeOptions()
-    
-    # --- CRITICAL DOCKER SETTINGS ---
-    # 1. Point to the exact binary installed by our Dockerfile
     options.binary_location = "/usr/bin/google-chrome"
     
+    # Docker/Linux specific arguments
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--start-maximized")
+    options.add_argument("--disable-setuid-sandbox")
     
-    # Enable performance logging
+    # Critical for avoiding "session not created" in some environments
+    options.add_argument("--remote-debugging-port=9222") 
+
     options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    
+    chrome_ver = get_chrome_version()
+    print(f"ℹ️ Detected Chrome Version: {chrome_ver}")
 
     driver = None
     try:
-        # 2. Add 'use_subprocess=True' and 'version_main'
-        # use_subprocess=True helps prevent zombie processes in Docker
-        # version_main=131 ensures the driver matches the Chrome version installed
         driver = uc.Chrome(
             options=options, 
             headless=False, 
             use_subprocess=True,
-            version_main=131 
+            version_main=chrome_ver 
         )
         
         print("🚀 Loading CopyChecker...")

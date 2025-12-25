@@ -31,5 +31,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4. Copy application code
 COPY . .
 
-# 5. Run command
-CMD ["xvfb-run", "-a", "--server-args='-screen 0 1920x1080x24'", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Grant execution permission to the start script
+RUN chmod +x start.sh
+
+# 5. Run command: Use the start script
+CMD ["./start.sh"]
