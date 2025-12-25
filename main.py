@@ -18,25 +18,37 @@ class PlagiarismRequest(BaseModel):
 def process_copychecker_network(text: str):
     options = uc.ChromeOptions()
     
-    # Critical flags for Docker/Linux environments
+    # --- CRITICAL DOCKER SETTINGS ---
+    # 1. Point to the exact binary installed by our Dockerfile
+    options.binary_location = "/usr/bin/google-chrome"
+    
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument("--window-size=1920,1080")
+    options.add_argument("--start-maximized")
     
-    # Note: We keep headless=False and use Xvfb (virtual screen) in Docker
-    # because headless=True is easily detected by anti-bot systems.
-    
+    # Enable performance logging
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+
+    driver = None
     try:
-        # Initialize driver (Chrome is installed via Dockerfile)
-        driver = uc.Chrome(options=options, headless=False, use_subprocess=False)
-        
-        # Enable performance logging
-        driver.execute_cdp_cmd('Network.enable', {})
+        # 2. Add 'use_subprocess=True' and 'version_main'
+        # use_subprocess=True helps prevent zombie processes in Docker
+        # version_main=131 ensures the driver matches the Chrome version installed
+        driver = uc.Chrome(
+            options=options, 
+            headless=False, 
+            use_subprocess=True,
+            version_main=131 
+        )
         
         print("🚀 Loading CopyChecker...")
         driver.get("https://copychecker.com/")
 
+        # ... (Rest of your interaction logic remains the same) ...
+        # (Be sure to keep the indentation correct!)
+        
         # --- Interaction Logic ---
         textarea = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.ID, "message")))
@@ -51,12 +63,12 @@ def process_copychecker_network(text: str):
         time.sleep(1)
 
         submit_btn = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//button[contains(., 'Check Plagiarism')]"))
+            EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Check Plagiarism')]"))
         )
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", submit_btn)
         time.sleep(0.5)
         submit_btn.click()
+        # -------------------------
 
         # 2. MONITOR NETWORK
         print("⏳ Waiting for API response...")
@@ -73,40 +85,29 @@ def process_copychecker_network(text: str):
                     params = message.get("params")
 
                     if method == "Network.responseReceived":
-                        response = params.get("response", {})
-                        url = response.get("url", "")
-                        if "plagiarism-checker-api" in url:
+                        if "plagiarism-checker-api" in params.get("response", {}).get("url", ""):
                             target_request_id = params.get("requestId")
-                            print(f"👀 Detected target ID: {target_request_id}")
 
-                    if method == "Network.loadingFinished":
-                        request_id = params.get("requestId")
-                        if request_id == target_request_id:
-                            print(f"✅ Download finished: {request_id}")
-                            try:
-                                body_response = driver.execute_cdp_cmd(
-                                    'Network.getResponseBody',
-                                    {'requestId': request_id}
-                                )
-                                body_content = body_response['body']
-                                if body_response.get('base64Encoded', False):
-                                    body_content = base64.b64decode(body_content).decode('utf-8')
-                                return json.loads(body_content)
-                            except Exception as e:
-                                print(f"⚠️ Error retrieving body: {e}")
-                                continue
-                except Exception:
+                    if method == "Network.loadingFinished" and params.get("requestId") == target_request_id:
+                        body_response = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': target_request_id})
+                        body_content = body_response['body']
+                        if body_response.get('base64Encoded', False):
+                            body_content = base64.b64decode(body_content).decode('utf-8')
+                        return json.loads(body_content)
+                except:
                     continue
             time.sleep(0.5)
-        return {"error": "Network timeout - API response not found"}
+
+        return {"error": "Timeout - API call not found"}
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Chrome Crash: {str(e)}"}
     finally:
-        try:
-            driver.quit()
-        except:
-            pass
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
 
 @app.post("/check-plagiarism-network")
 def check_plagiarism_net(request: PlagiarismRequest):
