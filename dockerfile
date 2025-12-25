@@ -1,14 +1,23 @@
-FROM python:3.9-slim
+# Use the full Python image to avoid missing shared libraries
+FROM python:3.9
 
 # 1. Install dependencies for Chrome and Xvfb
+
+# --- BETTER VERSION ---
+
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
     xvfb \
     libxi6 \
-    libgconf-2-4 \
     libnss3 \
+    libgbm1 \
+    libasound2 \
+    fonts-liberation \
+    libu2f-udev \
+    libvulkan1 \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Install Google Chrome Stable
@@ -26,4 +35,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 5. Run command: Use xvfb-run to simulate a display
-CMD ["xvfb-run", "-a", "--server-args='-screen 0 1280x800x24'", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# We use --server-args to ensure the virtual screen is large enough
+CMD ["xvfb-run", "-a", "--server-args='-screen 0 1920x1080x24'", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
